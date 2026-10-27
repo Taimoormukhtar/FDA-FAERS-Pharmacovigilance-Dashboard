@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.vscode/
+
+# Downloaded FAERS source data and locally generated analysis outputs
+raw data/*
+!raw data/.gitkeep
+outputs/*
+!outputs/.gitkeep
+*.duckdb
+*.wal
+profile_cross_quarter_walkthrough.html
