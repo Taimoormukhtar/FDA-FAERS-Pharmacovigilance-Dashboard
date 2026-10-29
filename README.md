@@ -94,6 +94,8 @@ The clean tables have different grains and should not be joined indiscriminately
 
 Aggregate each child table to the intended chart grain before joining multiple child tables. Joining, for example, drugs directly to reactions and outcomes can multiply rows and inflate counts. Preserve `caseid`, `primaryid`, and `drug_seq_raw` when exporting or building relationships.
 
+Routes stay in `clean_dose` rather than being reduced to one value in `clean_drug`: one drug sequence can have more than one reported route.
+
 Stage 2 is a cleaned analytical layer, not causal evidence or a complete dashboard model. Drug parent-molecule and country-name mapping remain review tasks; duplicate candidates are flags, not confirmed duplicates; recent cases are provisional; and missing or implausible values remain unavailable with status flags. FAERS has no exposure denominator and is subject to reporting bias and reporting delays.
 
 ## Next project stage

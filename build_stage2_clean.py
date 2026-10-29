@@ -160,7 +160,7 @@ WITH g AS (
          min(upper(trim(role_cod))) AS role_cod, max(upper(trim(role_cod))) AS role_cod_max,
          min(trim(drugname)) AS drugname_raw, max(trim(drugname)) AS drugname_max,
          min(trim(prod_ai)) AS prod_ai_raw, max(trim(prod_ai)) AS prod_ai_max,
-         min(trim(val_vbm)) AS val_vbm, min(trim(route)) AS route_min,
+         min(trim(val_vbm)) AS val_vbm,
          max(CASE upper(trim(dechal)) WHEN 'Y' THEN 4 WHEN 'N' THEN 3 WHEN 'U' THEN 2 WHEN 'D' THEN 1 END) AS dechal_rank,
          max(CASE upper(trim(rechal)) WHEN 'Y' THEN 4 WHEN 'N' THEN 3 WHEN 'U' THEN 2 WHEN 'D' THEN 1 END) AS rechal_rank,
          min(trim(nda_num)) AS nda_num, count(*) AS n_source_rows
@@ -182,7 +182,6 @@ SELECT primaryid, caseid, drug_seq_raw, try_cast(drug_seq_raw AS INTEGER) AS dru
        coalesce(strpos(coalesce(nullif(upper(prod_ai_raw), ''), upper(drugname_raw), ''), chr(92)) > 0, FALSE) AS is_combination,
        length(coalesce(nullif(prod_ai_raw, ''), drugname_raw, '')) - length(replace(coalesce(nullif(prod_ai_raw, ''), drugname_raw, ''), chr(92), '')) + 1 AS n_ingredients,
        nullif(val_vbm, '') AS val_vbm,
-       CASE WHEN route_min IS NULL OR route_min = '' OR upper(route_min) = 'UNKNOWN' THEN 'Unknown' ELSE route_min END AS route_std,
        CASE dechal_rank WHEN 4 THEN 'Y' WHEN 3 THEN 'N' WHEN 2 THEN 'U' WHEN 1 THEN 'D' END AS dechallenge,
        CASE rechal_rank WHEN 4 THEN 'Y' WHEN 3 THEN 'N' WHEN 2 THEN 'U' WHEN 1 THEN 'D' END AS rechallenge,
        (rechal_rank = 4) AS rechallenge_positive,
