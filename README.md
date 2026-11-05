@@ -1,6 +1,6 @@
 # FDA FAERS Pharmacovigilance Dashboard
 
-An ongoing project to explore FDA Adverse Event Reporting System (FAERS) quarterly data and prepare a pharmacovigilance dashboard. The repository now includes profiling, cross-quarter case consolidation, and a rule-based Stage 2 clean layer. Dashboard-specific aggregates and visualizations are still future work.
+An ongoing project to explore FDA Adverse Event Reporting System (FAERS) quarterly data and prepare a pharmacovigilance dashboard. The repository includes profiling, cross-quarter case consolidation, a rule-based Stage 2 clean layer, and a Stage 3 signal-count table for Dashboard 2.
 
 FAERS reports describe suspected adverse events. They do not establish that a drug caused an event.
 
@@ -12,6 +12,8 @@ FAERS reports describe suspected adverse events. They do not establish that a dr
 - `build_stage1_consolidate.py` — consolidates the latest case versions from the quarter profile databases into seven Stage 1 tables, with audit tables and integrity checks.
 - `build_stage1_consolidate_walkthrough.ipynb` — guided, cell-by-cell explanation of the Stage 1 consolidation script. It reads the saved Stage 1 database and source profiles read-only; it does not rerun the consolidation.
 - `build_stage2_clean.py` — builds a separate clean layer from Stage 1, retains selected raw fields alongside cleaned fields, and writes audit and review outputs.
+- `Data pipeline code/build_stage3_signals.py` — adds precomputed primary-suspect drug/reaction counts and signal statistics to an existing Stage 2 DuckDB database.
+- `signal_workbench_walkthrough.ipynb` — teaches the Stage 3 counts, PRR, Yates chi-square, confidence interval, screening rules, and limitations using an invented example, with optional read-only checks against a local DuckDB database.
 - `inspect_profile_db.py`, `explore_demo.py` — helper scripts used to inspect and explore the profiling outputs.
 - `requirements.txt` — Python package dependencies.
 
@@ -98,6 +100,26 @@ Routes stay in `clean_dose` rather than being reduced to one value in `clean_dru
 
 Stage 2 is a cleaned analytical layer, not causal evidence or a complete dashboard model. Drug parent-molecule and country-name mapping remain review tasks; duplicate candidates are flags, not confirmed duplicates; recent cases are provisional; and missing or implausible values remain unavailable with status flags. FAERS has no exposure denominator and is subject to reporting bias and reporting delays.
 
+## Build Dashboard 2 signal pairs
+
+With Tableau closed (DuckDB permits only one writer), run the Stage 3 builder against the existing clean database:
+
+```powershell
+python ".\Data pipeline code\build_stage3_signals.py" ".\outputs\stage2_clean_20261029_verified\faers_clean.duckdb"
+```
+
+The script preserves the Stage 2 tables and atomically replaces the Stage 3 output tables only after its checks pass. It also writes `signal_meta`, `signal_admin_terms`, and `stage3_report.txt` to document thresholds, the administrative-term list, and validation results. `signal_pairs` has one row per primary-suspect ingredient/reaction and qualifying window (`All quarters` or the two quarters marked provisional in `clean_case`), with at least three cases. Its counts are `cases` (a), `drug_cases` (a+b), `reaction_cases` (a+c), and `total_cases` (N); it also includes serious/death case counts, first-seen quarter, PRR, Yates-corrected chi-square, and duplicate-reduced counts/statistics.
+
+To understand the statistical logic, open `signal_workbench_walkthrough.ipynb` in VS Code, select the project's `.venv` kernel, and run from top to bottom. Its invented example runs without the local database; the final section opens the local DuckDB read-only if it is available.
+
+The stored PRR is NULL when the comparator has no cases for that reaction; such rows are not flagged by default. Yates correction clamps the corrected absolute difference at zero. `is_emerging` applies only to `Last 2 quarters` and means the pair meets the default thresholds there but not in `Earlier quarters`. The duplicate-reduced values exclude only later *candidate* duplicates and are a sensitivity check, not a confirmed deduplication. Combination ingredients in Stage 2 remain combined labels rather than being split into component drugs. Use the `is_administrative` field to suppress the configured product-use terms by default, while keeping them available for inspection. Signals are screening flags, not evidence that a drug caused a reaction; reporting bias, duplicates, provisional data, and disease symptoms remain important limitations.
+
+In Tableau, calculate a/b/c/d and PRR/chi-square for one selected drug/reaction pair and window at a time; these pair-specific counts must not be summed across different pairs as a combined contingency table.
+
+## Explore Stage 2 in Jupyter
+
+Open `explore_stage2_data.ipynb` in VS Code, select the project's `.venv` kernel, and run cells from top to bottom. The notebook opens the verified local Stage 2 database read-only. It includes table and column discovery, row previews, one-case join examples, missingness and category exploration, trial queries for the five dashboard wireframes, and a SQL playground. Change `DB_PATH` near the top if your clean database is in a different location. Signal statistics and therapeutic-area mappings are not yet in the clean layer; the notebook marks these wireframe requirements as remaining work. The notebook does not modify the database.
+
 ## Next project stage
 
-Review and approve the ingredient and country review files, decide how the duplicate flags will be used in signal analyses, then build dashboard-specific aggregates and visualizations. Keep the clean case/drug/reaction/outcome tables as separate grains and validate each published metric against a defined case-level denominator.
+Review and approve the ingredient and country review files, assess the Stage 3 signal flags and administrative-term list, and build the Tableau visualization. Keep the clean case/drug/reaction/outcome tables as separate grains and validate each published metric against a defined case-level denominator.
