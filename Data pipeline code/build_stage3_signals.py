@@ -117,7 +117,8 @@ SELECT c.ps_ingredient_std AS drug, r.pt_key, any_value(r.pt) AS pt,
   count(*) FILTER (WHERE c.is_provisional AND c.in_duplicate_reduced_set) AS a_rec_dr,
   count(*) FILTER (WHERE c.has_outcome_code) AS ser_all, count(*) FILTER (WHERE c.has_outcome_code AND c.is_provisional) AS ser_rec,
   count(*) FILTER (WHERE c.has_death_outcome) AS dth_all, count(*) FILTER (WHERE c.has_death_outcome AND c.is_provisional) AS dth_rec,
-  min(c.first_received_quarter) AS first_seen
+  CASE WHEN bool_or(c.first_received_quarter = 'Before window') THEN 'Before window'
+       ELSE arg_min(c.first_received_quarter, c.first_received_quarter_start) END AS first_seen
 {BASE} GROUP BY c.ps_ingredient_std, r.pt_key""")
 CASES = "FROM clean_case WHERE ps_status = 'PS' AND ps_ingredient_std IS NOT NULL"
 con.execute(f"""CREATE OR REPLACE TABLE _dt AS SELECT ps_ingredient_std AS drug, count(*) AS d_all,
@@ -306,6 +307,19 @@ bad_totals = scalar("""SELECT count(*) FROM (
 )""")
 ok &= bad_totals == 0
 say(f"[{'PASS' if bad_totals == 0 else 'FAIL'}] each window has one consistent total-case denominator ({bad_totals:,} windows with inconsistent totals)")
+bad_first_seen = scalar("""WITH expected AS (
+  SELECT c.ps_ingredient_std, r.pt_key,
+         CASE WHEN bool_or(c.first_received_quarter = 'Before window') THEN 'Before window'
+              ELSE arg_min(c.first_received_quarter, c.first_received_quarter_start) END AS first_seen_quarter
+  FROM clean_case c JOIN clean_reaction r ON r.primaryid = c.primaryid
+  WHERE c.ps_status = 'PS' AND c.ps_ingredient_std IS NOT NULL
+  GROUP BY 1, 2
+)
+SELECT count(*) FROM signal_pairs s
+JOIN expected e ON e.ps_ingredient_std = s.ps_ingredient_std AND e.pt_key = s.pt_key
+WHERE s.first_seen_quarter IS DISTINCT FROM e.first_seen_quarter""")
+ok &= bad_first_seen == 0
+say(f"[{'PASS' if bad_first_seen == 0 else 'FAIL'}] first-seen quarter uses chronological dates and preserves pre-window cases ({bad_first_seen:,} mismatches)")
 bad_emerging = scalar("""SELECT count(*) FROM signal_pairs
   WHERE is_emerging AND ("window" <> 'Last 2 quarters' OR NOT flagged_default)""")
 ok &= bad_emerging == 0

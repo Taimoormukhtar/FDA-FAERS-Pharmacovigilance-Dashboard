@@ -13,6 +13,7 @@ FAERS reports describe suspected adverse events. They do not establish that a dr
 - `build_stage1_consolidate_walkthrough.ipynb` — guided, cell-by-cell explanation of the Stage 1 consolidation script. It reads the saved Stage 1 database and source profiles read-only; it does not rerun the consolidation.
 - `build_stage2_clean.py` — builds a separate clean layer from Stage 1, retains selected raw fields alongside cleaned fields, and writes audit and review outputs.
 - `Data pipeline code/build_stage3_signals.py` — adds precomputed primary-suspect drug/reaction counts and signal statistics to an existing Stage 2 DuckDB database.
+- `Data pipeline code/build_stage3_case_detail.py` — adds the selected-pair case-level detail rows needed for Dashboard 2 drill-downs.
 - `signal_workbench_walkthrough.ipynb` — teaches the Stage 3 counts, PRR, Yates chi-square, confidence interval, screening rules, and limitations using an invented example, with optional read-only checks against a local DuckDB database.
 - `inspect_profile_db.py`, `explore_demo.py` — helper scripts used to inspect and explore the profiling outputs.
 - `requirements.txt` — Python package dependencies.
@@ -112,9 +113,29 @@ The script preserves the Stage 2 tables and atomically replaces the Stage 3 outp
 
 To understand the statistical logic, open `signal_workbench_walkthrough.ipynb` in VS Code, select the project's `.venv` kernel, and run from top to bottom. Its invented example runs without the local database; the final section opens the local DuckDB read-only if it is available.
 
-The stored PRR is NULL when the comparator has no cases for that reaction; such rows are not flagged by default. Yates correction clamps the corrected absolute difference at zero. `is_emerging` applies only to `Last 2 quarters` and means the pair meets the default thresholds there but not in `Earlier quarters`. The duplicate-reduced values exclude only later *candidate* duplicates and are a sensitivity check, not a confirmed deduplication. Combination ingredients in Stage 2 remain combined labels rather than being split into component drugs. Use the `is_administrative` field to suppress the configured product-use terms by default, while keeping them available for inspection. Signals are screening flags, not evidence that a drug caused a reaction; reporting bias, duplicates, provisional data, and disease symptoms remain important limitations.
+The stored PRR is NULL when the comparator has no cases for that reaction; such rows are not flagged by default. Yates correction clamps the corrected absolute difference at zero. `first_seen_quarter` is determined chronologically and reports `Before window` if any contributing case predates the study window. `is_emerging` applies only to `Last 2 quarters` and means the pair meets the default thresholds there but not in `Earlier quarters`. The duplicate-reduced values exclude only later *candidate* duplicates and are a sensitivity check, not a confirmed deduplication. Combination ingredients in Stage 2 remain combined labels rather than being split into component drugs. The administrative-term list is a preliminary exact-match filter; review it before hiding flagged rows, because some terms may be clinically relevant and other product/device terms are not yet included. Signals are screening flags, not evidence that a drug caused a reaction; reporting bias, duplicates, provisional data, and disease symptoms remain important limitations.
 
 In Tableau, calculate a/b/c/d and PRR/chi-square for one selected drug/reaction pair and window at a time; these pair-specific counts must not be summed across different pairs as a combined contingency table.
+
+## Build Dashboard 2 selected-pair detail
+
+With Tableau closed, build the case-detail table after `signal_pairs` exists:
+
+```powershell
+python ".\Data pipeline code\build_stage3_case_detail.py" ".\outputs\stage2_clean_20261029_verified\faers_clean.duckdb"
+```
+
+`signal_case_detail` has one row per selected primary-suspect `primaryid` × qualifying reaction pair from the All-quarters signal set. It includes `primaryid` and `caseid` from `clean_case`, the same `pair_id` as `signal_pairs`, and selected demographic, outcome, onset, dechallenge/rechallenge, and duplicate-review fields. The build is transactional and verifies each pair's all-quarter and recent counts against `signal_pairs`; the value summaries and checks are written to `stage3_case_detail_report.txt`.
+
+Tableau keys and grain:
+
+| Table | Grain | Candidate key / relationship |
+|---|---|---|
+| `clean_case` | One selected report per case | `primaryid` is unique in this extract; `caseid` identifies the selected case |
+| `signal_pairs` | One drug/reaction pair per window | Composite key `pair_id` + `window`; `pair_id` alone repeats across windows |
+| `signal_case_detail` | One selected report per drug/reaction pair | Composite key `primaryid` + `pair_id`; `primaryid` repeats across reactions and `pair_id` repeats across reports |
+
+Within the case-detail data source, relate `clean_case` (one) to `signal_case_detail` (many) on `primaryid`. Do not directly join `signal_pairs` to case detail on ingredient alone: it fans out by reactions, cases, and windows. For separate Tableau extracts, use a selected-pair parameter carrying `pair_id` and a window parameter; filter detail to the selected `pair_id`, and for `Last 2 quarters` additionally filter `is_provisional = TRUE`. For an in-source relationship between signal aggregates and detail, use `pair_id` plus `window` and include the window in a window-specific detail source; otherwise use the parameter approach rather than implying a one-to-one relationship.
 
 ## Explore Stage 2 in Jupyter
 
