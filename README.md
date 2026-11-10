@@ -1,6 +1,10 @@
 # FDA FAERS Pharmacovigilance Dashboard
 
-An ongoing project to explore FDA Adverse Event Reporting System (FAERS) quarterly data and prepare a pharmacovigilance dashboard. The repository includes profiling, cross-quarter case consolidation, a rule-based Stage 2 clean layer, and a Stage 3 signal-count table for Dashboard 2.
+An end-to-end pipeline that profiles FDA adverse-event reports and prepares dashboard-ready FAERS data.
+Coverage: eight quarters, 24Q3–26Q2.
+Pipeline: Bronze (Stage 1 consolidation) → Silver (Stage 2 clean layer) → Gold (Stage 3 signal and case-detail tables).
+
+**Dashboard 2:** signal tables built; dashboard in progress.
 
 FAERS reports describe suspected adverse events. They do not establish that a drug caused an event.
 
@@ -14,6 +18,7 @@ FAERS reports describe suspected adverse events. They do not establish that a dr
 - `Data pipeline code/build_stage3_case_detail.py` — adds the selected-pair case-level detail rows needed for Dashboard 2 drill-downs.
 - `Data pipeline code/inspect_profile_db.py` — inspects profiling database tables and outputs.
 - `explore_demo.py` — helper script used to explore profiling outputs.
+- `explore_stage2_data.ipynb` — read-only exploration of the Stage 2 clean database and dashboard metrics.
 - `Tableau work/dashboard1_safety_landscape.png` — Dashboard 1 overview image.
 - `requirements.txt` — Python package dependencies.
 
@@ -105,7 +110,7 @@ Stage 2 is a cleaned analytical layer, not causal evidence or a complete dashboa
 With Tableau closed (DuckDB permits only one writer), run the Stage 3 builder against the existing clean database:
 
 ```powershell
-python ".\Data pipeline code\build_stage3_signals.py" ".\outputs\stage2_clean_20261029_verified\faers_clean.duckdb"
+python ".\Data pipeline code\build_stage3_signals.py" ".\outputs\stage2_clean\faers_clean.duckdb"
 ```
 
 The script preserves the Stage 2 tables and atomically replaces the Stage 3 output tables only after its checks pass. It also writes `signal_meta`, `signal_admin_terms`, and `stage3_report.txt` to document thresholds, the administrative-term list, and validation results. `signal_pairs` has one row per primary-suspect ingredient/reaction and qualifying window (`All quarters` or the two quarters marked provisional in `clean_case`), with at least three cases. Its counts are `cases` (a), `drug_cases` (a+b), `reaction_cases` (a+c), and `total_cases` (N); it also includes serious/death case counts, first-seen quarter, PRR, Yates-corrected chi-square, and duplicate-reduced counts/statistics.
@@ -119,7 +124,7 @@ In Tableau, calculate a/b/c/d and PRR/chi-square for one selected drug/reaction 
 With Tableau closed, build the case-detail table after `signal_pairs` exists:
 
 ```powershell
-python ".\Data pipeline code\build_stage3_case_detail.py" ".\outputs\stage2_clean_20261029_verified\faers_clean.duckdb"
+python ".\Data pipeline code\build_stage3_case_detail.py" ".\outputs\stage2_clean\faers_clean.duckdb"
 ```
 
 `signal_case_detail` has one row per selected primary-suspect `primaryid` × qualifying reaction pair from the All-quarters signal set. It includes `primaryid` and `caseid` from `clean_case`, the same `pair_id` as `signal_pairs`, and selected demographic, outcome, onset, dechallenge/rechallenge, and duplicate-review fields. The build is transactional and verifies each pair's all-quarter and recent counts against `signal_pairs`; the value summaries and checks are written to `stage3_case_detail_report.txt`.

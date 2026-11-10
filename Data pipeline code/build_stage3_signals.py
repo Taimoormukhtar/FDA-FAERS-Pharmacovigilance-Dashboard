@@ -6,7 +6,7 @@ Adds to faers_clean.duckdb (existing tables are not touched):
   signal_meta         thresholds, window sizes, build time
   signal_admin_terms  reaction terms treated as administrative (edit the list below)
 
-Decisions (made as head of biometrics):
+Design decisions:
   * Primary suspect only (ps_status = 'PS'); every case counted once per pair.
   * Comparator = all other cases with a primary-suspect ingredient.
   * Windows: 'All quarters' and 'Last 2 quarters' (= is_provisional cases).
