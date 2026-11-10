@@ -26,7 +26,7 @@ from pathlib import Path
 import duckdb
 
 # =============================== SETTINGS ====================================
-PROJECT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_DIR / "raw data"                # quarter files are in nested ASCII/Deleted folders
 OUT_DIR = PROJECT_DIR / "outputs" / "profile_24Q3"
 QUARTER = "24Q3"                                  # two-digit year + Q + quarter number

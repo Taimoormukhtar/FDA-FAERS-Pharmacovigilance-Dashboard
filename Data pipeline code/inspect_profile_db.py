@@ -4,7 +4,7 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-project_dir = Path(__file__).resolve().parent
+project_dir = Path(__file__).resolve().parent.parent
 database_path = (
     project_dir
     / "outputs"

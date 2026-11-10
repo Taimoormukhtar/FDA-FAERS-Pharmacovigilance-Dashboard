@@ -6,17 +6,22 @@ FAERS reports describe suspected adverse events. They do not establish that a dr
 
 ## Current project contents
 
-- `profile_faers_q.py` — profiles one quarter's seven FAERS ASCII tables and writes a DuckDB database and text report.
-- `profile_cross_quarter.py` — compares existing quarter profile databases and writes a cross-quarter report.
-- `profile_cross_quarter_walkthrough.ipynb` — guided, cell-by-cell version of the cross-quarter analysis.
-- `build_stage1_consolidate.py` — consolidates the latest case versions from the quarter profile databases into seven Stage 1 tables, with audit tables and integrity checks.
-- `build_stage1_consolidate_walkthrough.ipynb` — guided, cell-by-cell explanation of the Stage 1 consolidation script. It reads the saved Stage 1 database and source profiles read-only; it does not rerun the consolidation.
-- `build_stage2_clean.py` — builds a separate clean layer from Stage 1, retains selected raw fields alongside cleaned fields, and writes audit and review outputs.
+- `Data pipeline code/profile_faers_q.py` — profiles one quarter's seven FAERS ASCII tables and writes a DuckDB database and text report.
+- `Data pipeline code/profile_cross_quarter.py` — compares existing quarter profile databases and writes a cross-quarter report.
+- `Data pipeline code/build_stage1_consolidate.py` — consolidates the latest case versions from the quarter profile databases into seven Stage 1 tables, with audit tables and integrity checks.
+- `Data pipeline code/build_stage2_clean.py` — builds a separate clean layer from Stage 1, retains selected raw fields alongside cleaned fields, and writes audit and review outputs.
 - `Data pipeline code/build_stage3_signals.py` — adds precomputed primary-suspect drug/reaction counts and signal statistics to an existing Stage 2 DuckDB database.
 - `Data pipeline code/build_stage3_case_detail.py` — adds the selected-pair case-level detail rows needed for Dashboard 2 drill-downs.
-- `signal_workbench_walkthrough.ipynb` — teaches the Stage 3 counts, PRR, Yates chi-square, confidence interval, screening rules, and limitations using an invented example, with optional read-only checks against a local DuckDB database.
-- `inspect_profile_db.py`, `explore_demo.py` — helper scripts used to inspect and explore the profiling outputs.
+- `Data pipeline code/inspect_profile_db.py` — inspects profiling database tables and outputs.
+- `explore_demo.py` — helper script used to explore profiling outputs.
+- `Tableau work/dashboard1_safety_landscape.png` — Dashboard 1 overview image.
 - `requirements.txt` — Python package dependencies.
+
+## Dashboard 1: Safety Landscape
+
+![Safety Landscape dashboard](Tableau%20work/dashboard1_safety_landscape.png)
+
+The leadership dashboard summarizes FAERS reports by first-received quarter, outcome, primary-suspect drug, event location, and report channel. It includes headline measures for new cases, serious share, death-outcome share, and top-10 drug concentration. The pictured view is through 26Q2; 23.6% of cases are provisional and may change. These figures describe adverse-event reports, not incidence rates or proof of causation.
 
 ## Data is not stored in this repository
 
@@ -41,33 +46,27 @@ Use Python 3.10 or newer. The requirements install `ipykernel` so the environmen
 After extracting the quarter's files under `raw data`, run the single-quarter profiling script. For example:
 
 ```powershell
-python .\profile_faers_q.py ".\raw data" ".\outputs\profile_24Q3" 24Q3
+python ".\Data pipeline code\profile_faers_q.py" ".\raw data" ".\outputs\profile_24Q3" 24Q3
 ```
 
 Repeat with the corresponding quarter code for each quarter. The script refuses to overwrite an existing report or database; choose a fresh output folder or move the existing files before rerunning it.
 
-## Run the cross-quarter walkthrough
+## Profile data across quarters
 
-Open `profile_cross_quarter_walkthrough.ipynb` in VS Code or Jupyter, choose the project's `.venv` kernel, and run cells from top to bottom. It reads the per-quarter DuckDB databases in read-only mode and uses temporary in-memory tables. Its candidate “latest version, remove deleted cases” rule is for investigation only, not a finalized cleaning policy.
-
-Alternatively, after all quarter databases exist, run the script from PowerShell:
+After all quarter databases exist, run the cross-quarter profiling script from PowerShell:
 
 ```powershell
-python .\profile_cross_quarter.py ".\outputs"
+python ".\Data pipeline code\profile_cross_quarter.py" ".\outputs"
 ```
 
 This writes `outputs/cross_quarter_report.txt` and may use a temporary DuckDB spill folder beneath `outputs`.
 
-## Understand and review Stage 1
+## Build Stage 1
 
-Open `build_stage1_consolidate_walkthrough.ipynb` in VS Code, select the project's `.venv` kernel, and run cells from top to bottom. The notebook expects the eight `profile_??Q?.duckdb` files under `outputs` and a completed Stage 1 output folder; generated data is not included in the repository.
-
-The consolidation script writes one latest-version-per-case set of seven tables and audit tables. It intentionally preserves the delivered values as text; it does not produce cleaned, analysis-ready dashboard tables.
-
-To build Stage 1 from the eight profile databases, use a new output folder:
+The consolidation script writes one latest-version-per-case set of seven tables and audit tables. It intentionally preserves the delivered values as text; it does not produce cleaned, analysis-ready dashboard tables. To build Stage 1 from the profile databases, use a new output folder:
 
 ```powershell
-python .\build_stage1_consolidate.py ".\outputs" ".\outputs\stage1_consolidated"
+python ".\Data pipeline code\build_stage1_consolidate.py" ".\outputs" ".\outputs\stage1_consolidated"
 ```
 
 ## Build the Stage 2 clean layer
@@ -75,7 +74,7 @@ python .\build_stage1_consolidate.py ".\outputs" ".\outputs\stage1_consolidated"
 After Stage 1 is complete, run the cleaner with the Stage 1 database and a **new output folder**:
 
 ```powershell
-python .\build_stage2_clean.py ".\outputs\stage1_consolidated\faers_stage1.duckdb" ".\outputs\stage2_clean"
+python ".\Data pipeline code\build_stage2_clean.py" ".\outputs\stage1_consolidated\faers_stage1.duckdb" ".\outputs\stage2_clean"
 ```
 
 Stage 2 attaches the Stage 1 database read-only. It writes `faers_clean.duckdb`, `stage2_report.txt`, and review CSVs for ingredients, country codes, code values, and reaction casing. It retains raw values for source fields projected into the clean tables and adds standardized fields and status flags. The clean database is an analysis-oriented projection, not a row-for-row copy; keep Stage 1 as the source for original columns not represented in Stage 2. The output folder is local and ignored by Git; it must be regenerated from the FAERS data and Stage 1 database.
@@ -110,8 +109,6 @@ python ".\Data pipeline code\build_stage3_signals.py" ".\outputs\stage2_clean_20
 ```
 
 The script preserves the Stage 2 tables and atomically replaces the Stage 3 output tables only after its checks pass. It also writes `signal_meta`, `signal_admin_terms`, and `stage3_report.txt` to document thresholds, the administrative-term list, and validation results. `signal_pairs` has one row per primary-suspect ingredient/reaction and qualifying window (`All quarters` or the two quarters marked provisional in `clean_case`), with at least three cases. Its counts are `cases` (a), `drug_cases` (a+b), `reaction_cases` (a+c), and `total_cases` (N); it also includes serious/death case counts, first-seen quarter, PRR, Yates-corrected chi-square, and duplicate-reduced counts/statistics.
-
-To understand the statistical logic, open `signal_workbench_walkthrough.ipynb` in VS Code, select the project's `.venv` kernel, and run from top to bottom. Its invented example runs without the local database; the final section opens the local DuckDB read-only if it is available.
 
 The stored PRR is NULL when the comparator has no cases for that reaction; such rows are not flagged by default. Yates correction clamps the corrected absolute difference at zero. `first_seen_quarter` is determined chronologically and reports `Before window` if any contributing case predates the study window. `is_emerging` applies only to `Last 2 quarters` and means the pair meets the default thresholds there but not in `Earlier quarters`. The duplicate-reduced values exclude only later *candidate* duplicates and are a sensitivity check, not a confirmed deduplication. Combination ingredients in Stage 2 remain combined labels rather than being split into component drugs. The administrative-term list is a preliminary exact-match filter; review it before hiding flagged rows, because some terms may be clinically relevant and other product/device terms are not yet included. Signals are screening flags, not evidence that a drug caused a reaction; reporting bias, duplicates, provisional data, and disease symptoms remain important limitations.
 
