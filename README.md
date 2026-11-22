@@ -2,9 +2,9 @@
 
 An end-to-end pipeline that profiles FDA adverse-event reports and prepares dashboard-ready FAERS data.
 Coverage: eight quarters, 24Q3–26Q2.
-Pipeline: Bronze (Stage 1 consolidation) → Silver (Stage 2 clean layer) → Gold (Stage 3 signal and case-detail tables).
+Pipeline: Bronze (Stage 1 consolidation) → Silver (Stage 2 clean layer) → Gold (Stages 3–4 signal, case-detail, and dashboard-support tables).
 
-**Dashboard 2:** signal tables built; dashboard in progress.
+**Dashboard 2:** Signal Workbench built; its signal, case-detail, and support tables are available in DuckDB.
 
 FAERS reports describe suspected adverse events. They do not establish that a drug caused an event.
 
@@ -16,10 +16,12 @@ FAERS reports describe suspected adverse events. They do not establish that a dr
 - `Data pipeline code/build_stage2_clean.py` — builds a separate clean layer from Stage 1, retains selected raw fields alongside cleaned fields, and writes audit and review outputs.
 - `Data pipeline code/build_stage3_signals.py` — adds precomputed primary-suspect drug/reaction counts and signal statistics to an existing Stage 2 DuckDB database.
 - `Data pipeline code/build_stage3_case_detail.py` — adds the selected-pair case-level detail rows needed for Dashboard 2 drill-downs.
+- `Data pipeline code/build_stage4_support.py` — adds reaction-profile and therapeutic-area support tables for Dashboards 3–5.
 - `Data pipeline code/inspect_profile_db.py` — inspects profiling database tables and outputs.
 - `explore_demo.py` — helper script used to explore profiling outputs.
 - `explore_stage2_data.ipynb` — read-only exploration of the Stage 2 clean database and dashboard metrics.
 - `Tableau work/dashboard1_safety_landscape.png` — Dashboard 1 overview image.
+- `Tableau work/Signal Workbench.png` — Dashboard 2 overview image.
 - `requirements.txt` — Python package dependencies.
 
 ## Dashboard 1: Safety Landscape
@@ -27,6 +29,14 @@ FAERS reports describe suspected adverse events. They do not establish that a dr
 ![Safety Landscape dashboard](Tableau%20work/dashboard1_safety_landscape.png)
 
 The leadership dashboard summarizes FAERS reports by first-received quarter, outcome, primary-suspect drug, event location, and report channel. It includes headline measures for new cases, serious share, death-outcome share, and top-10 drug concentration. The pictured view is through 26Q2; 23.6% of cases are provisional and may change. These figures describe adverse-event reports, not incidence rates or proof of causation.
+
+## Dashboard 2: Signal Workbench
+
+![Signal Workbench dashboard](Tableau%20work/Signal%20Workbench.png)
+
+The Signal Workbench is an interactive, hypothesis-generating screen for comparing how often a reaction is reported with a selected primary-suspect drug versus all other drugs. It ranks drug–reaction pairs and shows the proportional reporting ratio (PRR), Yates-corrected chi-square, case counts, and the rule thresholds used to flag pairs. The dashboard also exposes the underlying 2×2 counts, including a duplicate-reduced sensitivity view, and provides selected-pair summaries for report quarter, outcomes, demographics, onset, dechallenge/rechallenge, and reporting channel.
+
+These are comparisons of spontaneous-report proportions, not incidence rates: FAERS has no exposure denominator, and reporting bias, duplicates, provisional data, and symptoms of the treated condition can affect the results. A flagged pair is a prompt for investigation, not evidence that a drug caused a reaction.
 
 ## Data is not stored in this repository
 
@@ -139,10 +149,30 @@ Tableau keys and grain:
 
 Within the case-detail data source, relate `clean_case` (one) to `signal_case_detail` (many) on `primaryid`. Do not directly join `signal_pairs` to case detail on ingredient alone: it fans out by reactions, cases, and windows. For separate Tableau extracts, use a selected-pair parameter carrying `pair_id` and a window parameter; filter detail to the selected `pair_id`, and for `Last 2 quarters` additionally filter `is_provisional = TRUE`. For an in-source relationship between signal aggregates and detail, use `pair_id` plus `window` and include the window in a window-specific detail source; otherwise use the parameter approach rather than implying a one-to-one relationship.
 
+## Build Stage 4 dashboard-support tables
+
+After Stages 2 and 3 are complete, build the support tables in the clean DuckDB database. Close Tableau first so the builder can obtain the DuckDB write lock:
+
+```powershell
+python ".\Data pipeline code\build_stage4_support.py" ".\outputs\stage2_clean\faers_clean.duckdb"
+```
+
+Stage 4 adds three tables in one transaction and validates them before commit:
+
+| Table | Grain | Candidate relationship |
+|---|---|---|
+| `profile_reaction` | One row per case and reaction (`primaryid` + `pt_key`) | `clean_case` (one) to `profile_reaction` (many) on `primaryid`; also aligns one-to-one with `clean_reaction` on `primaryid` + `pt_key` |
+| `ref_indication_area` | One row per non-null indication term | `clean_indication` (many) to `ref_indication_area` (one) on `indication_pt` |
+| `case_area` | One row per selected case (`primaryid`) | One-to-one with `clean_case` on `primaryid` |
+
+`profile_reaction` carries the all-quarter primary-suspect PRR, its default flag, and an administrative-term marker onto reaction rows. `case_area` chooses one area from the primary-suspect drug's indications to support case-level filtering without multiplying cases. Dashboard 5 needs no new table; it can use `clean_case` and `clean_onset`.
+
+The indication-area mapping is a preliminary keyword classification, not a licensed MedDRA classification. Review `review_indication_area.csv` and the category summaries in `stage4_report.txt`; `Other / unclassified` and `Unknown indication` should not be interpreted as clinical categories. The report is written next to the database and includes the build checks.
+
 ## Explore Stage 2 in Jupyter
 
 Open `explore_stage2_data.ipynb` in VS Code, select the project's `.venv` kernel, and run cells from top to bottom. The notebook opens the verified local Stage 2 database read-only. It includes table and column discovery, row previews, one-case join examples, missingness and category exploration, trial queries for the five dashboard wireframes, and a SQL playground. Change `DB_PATH` near the top if your clean database is in a different location. Signal statistics and therapeutic-area mappings are not yet in the clean layer; the notebook marks these wireframe requirements as remaining work. The notebook does not modify the database.
 
 ## Next project stage
 
-Review and approve the ingredient and country review files, assess the Stage 3 signal flags and administrative-term list, and build the Tableau visualization. Keep the clean case/drug/reaction/outcome tables as separate grains and validate each published metric against a defined case-level denominator.
+Review the Stage 3 signal flags and administrative-term list, and review the Stage 4 indication-area mapping. Continue building Dashboards 3–5, keeping the clean case/drug/reaction/outcome tables at their separate grains and validating each published metric against a defined case-level denominator. Refresh Tableau extracts after rebuilding the DuckDB tables.
